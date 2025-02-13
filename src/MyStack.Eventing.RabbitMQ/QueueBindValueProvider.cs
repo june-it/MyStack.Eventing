@@ -40,7 +40,7 @@ namespace MyStack.Eventing.RabbitMQ
                 routingKey = eventType.FullName!;
             }
 
-            return new QueueBindValue(exchangeName, queueName, routingKey);
+            return new QueueBindValue(queueName, exchangeName, routingKey);
         }
     }
 }

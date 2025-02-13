@@ -67,7 +67,7 @@ namespace MyStack.Eventing.RabbitMQ
         {
             if (queueNames.Count != 0)
             {
-                foreach (var queueName in queueNames)
+                foreach (var queueName in queueNames.Distinct())
                 {
                     var consumer = new EventingBasicConsumer(channel);
                     consumer.Received += async (ch, ea) =>

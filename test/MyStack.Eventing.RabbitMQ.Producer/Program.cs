@@ -39,6 +39,9 @@ namespace MyStack.Eventing.RabbitMQ.Producer
             ev.Meta.AddKeyValue("tenantid", "1234565");
             eventBus.PublishAsync(ev);
 
+            var ev2 = new HelloMessage2();
+            ev2.Meta.AddKeyValue("tenantid", "1234565");
+            eventBus.PublishAsync(ev2);
             app.Run();
         }
     }
