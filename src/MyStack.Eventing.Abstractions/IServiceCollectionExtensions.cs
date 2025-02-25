@@ -5,6 +5,13 @@ namespace MyStack.Eventing
 {
     public static class IServiceCollectionExtensions
     {
+        /// <summary>
+        /// Adds event support.
+        /// </summary>
+        /// <param name="services">The dependency service collection interface.</param>
+        /// <param name="configure">Configures the events.</param>
+        /// <param name="assemblies">The collection of assemblies to register subscription services.</param>
+        /// <returns></returns>
         public static IServiceCollection AddEventing(this IServiceCollection services, Action<IEventingBuilder> configure, params Assembly[] assemblies)
         {
             var eventingBuilder = new EventingBuilder(services, assemblies);

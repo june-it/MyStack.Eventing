@@ -21,6 +21,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MyStack.Eventing.RabbitMQ.C
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MyStack.Eventing.RabbitMQ.Shared", "test\MyStack.Eventing.RabbitMQ.Shared\MyStack.Eventing.RabbitMQ.Shared.csproj", "{4E948B63-8A0E-417E-9B9D-296D14C5E183}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "sln", "sln", "{1EA9C594-71D8-4F52-94F7-60467FC59562}"
+	ProjectSection(SolutionItems) = preProject
+		common.props = common.props
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

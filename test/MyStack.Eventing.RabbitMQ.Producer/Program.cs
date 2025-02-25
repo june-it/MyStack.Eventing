@@ -1,7 +1,7 @@
-﻿using MyStack.Eventing.RabbitMQ.Shared;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using MyStack.Eventing.RabbitMQ.Shared;
 
 namespace MyStack.Eventing.RabbitMQ.Producer
 {
@@ -28,6 +28,7 @@ namespace MyStack.Eventing.RabbitMQ.Producer
                            configureMQ.QueueOptions.Name = "MyStack";
                            configureMQ.ExchangeOptions.Name = "MyStack";
                            configureMQ.ExchangeOptions.ExchangeType = "topic";
+                           configureMQ.RoutingKeyPrefix = "12345.";
                        });
                    });
                });
@@ -36,12 +37,16 @@ namespace MyStack.Eventing.RabbitMQ.Producer
 
             var eventBus = app.Services.GetRequiredService<IEventBus>();
             var ev = new HelloMessage();
-            ev.Meta.AddKeyValue("tenantid", "1234565");
+            ev.Metadata.AddRabbitMQHeaders("tenantid", "1234565");
             eventBus.PublishAsync(ev);
 
             var ev2 = new HelloMessage2();
-            ev2.Meta.AddKeyValue("tenantid", "1234565");
+            ev2.Metadata.AddRabbitMQHeaders("tenantid", "1234565");
             eventBus.PublishAsync(ev2);
+
+            var eventData = new EventData();
+            eventBus.PublishAsync(eventData);
+
             app.Run();
         }
     }

@@ -1,9 +1,10 @@
 ﻿namespace MyStack.Eventing
 {
+    /// <summary>
+    /// Represents the event interface
+    /// </summary>
     public interface IEvent
     {
-        Guid Id { get; }
-        DateTime CreationTime { get; }
-        EventMeta Meta { get; }
+        EventMetadata Metadata { get; }
     }
 }

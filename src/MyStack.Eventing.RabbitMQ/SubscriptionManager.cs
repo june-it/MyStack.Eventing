@@ -1,17 +1,26 @@
 ﻿namespace MyStack.Eventing.RabbitMQ
 {
-    public class SubscriptionManager
+    internal class SubscriptionManager : ISubscriptionRegistrar
     {
-        private static readonly Dictionary<Type, List<string>> _subscriptions = [];
-        public void Subscribe(Type type, string routingKey)
+        private static readonly Dictionary<Type, List<string>> _subscriptions = new Dictionary<Type, List<string>>();
+        private readonly QueueBindValueProvider _queueBindValueProvider;
+        public SubscriptionManager(QueueBindValueProvider queueBindValueProvider)
         {
-            if (!_subscriptions.TryGetValue(type, out List<string>? value))
+            _queueBindValueProvider = queueBindValueProvider;
+        }
+        public void Subscribe(params Type[] messagetypes)
+        {
+            if (messagetypes == null) throw new ArgumentNullException(nameof(messagetypes));
+            foreach (var messageType in messagetypes)
             {
-                value = ([]);
-                _subscriptions[type] = value;
+                if (!_subscriptions.TryGetValue(messageType, out List<string>? value))
+                {
+                    value = new List<string>();
+                    _subscriptions[messageType] = value;
+                }
+                var queueBindValue = _queueBindValueProvider.GetValue(messageType);
+                value.Add(queueBindValue.RoutingKey);
             }
-
-            value.Add(routingKey);
         }
 
         public IList<Type>? GetSubscriptions(string messageKey)
@@ -30,7 +39,10 @@
             }
             return subscriptions;
         }
-
+        public IList<Type>? GetAllSubscriptions()
+        {
+            return _subscriptions.Keys.ToList();
+        }
         public bool IsMatch(string pattern, string input)
         {
             // Convert RabbitMQ wildcards to regular expressions

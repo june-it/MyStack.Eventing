@@ -4,42 +4,53 @@ using Microsoft.Extensions.Options;
 
 namespace MyStack.Eventing.RabbitMQ
 {
+    /// <summary>
+    /// Represents a service for providing queue binding values.
+    /// </summary>
     public class QueueBindValueProvider
     {
         private readonly ExchangeDeclareValueProvider _exchangeDeclareValueProvider;
         private readonly QueueDeclareValueProvider _queueDeclareValueProvider;
+        private readonly RoutingKeyProvider _routingKeyProvider;
         private readonly RabbitMQOptions _options;
         public QueueBindValueProvider(ExchangeDeclareValueProvider exchangeDeclareValueProvider,
             QueueDeclareValueProvider queueDeclareValueProvider,
-            IOptions<RabbitMQOptions> optionsAccessor)
+            IOptions<RabbitMQOptions> optionsAccessor,
+            RoutingKeyProvider routingKeyProvider)
         {
             _exchangeDeclareValueProvider = exchangeDeclareValueProvider;
             _queueDeclareValueProvider = queueDeclareValueProvider;
             _options = optionsAccessor.Value;
+            _routingKeyProvider = routingKeyProvider;
         }
-        public QueueBindValue GetValue([NotNull] Type eventType)
+        /// <summary>
+        /// Retrieves the queue binding value from the message type.
+        /// </summary>
+        /// <param name="messageType">The message type.</param>
+        /// <returns></returns>
+        public QueueBindValue GetValue([NotNull] Type messageType)
         {
-            var exchangeDeclareValue = _exchangeDeclareValueProvider.GetValue(eventType, _options.ExchangeOptions);
-            var queueDeclareValue = _queueDeclareValueProvider.GetValue(eventType, _options.QueueOptions);
+            if (messageType.IsGenericType && messageType.GetGenericTypeDefinition() == typeof(EventWrapper<>))
+                messageType = messageType.GetGenericArguments()[0];
 
-            var queueBindAttribute = eventType.GetCustomAttribute<QueueBindAttribute>();
+            var exchangeDeclareValue = _exchangeDeclareValueProvider.GetValue(messageType, _options.ExchangeOptions);
+            var queueDeclareValue = _queueDeclareValueProvider.GetValue(messageType, _options.QueueOptions);
+            var queueBindAttribute = messageType.GetCustomAttribute<QueueBindAttribute>();
 
-            var assemblyName = Assembly.GetEntryAssembly()?.GetName().Name ?? "NoEntryAssembly";
-
-            string queueName, exchangeName, routingKey;
+            string queueName, exchangeName, eventName;
             if (queueBindAttribute != null)
             {
-                queueName = (!string.IsNullOrEmpty(queueBindAttribute.QueueName) ? queueBindAttribute.QueueName : queueDeclareValue.Name ?? assemblyName)!;
-                exchangeName = (!string.IsNullOrEmpty(queueBindAttribute.ExchangeName) ? queueBindAttribute.ExchangeName : exchangeDeclareValue.Name ?? assemblyName)!;
-                routingKey = queueBindAttribute.RoutingKey;
+                queueName = (!string.IsNullOrEmpty(queueBindAttribute.QueueName) ? queueBindAttribute.QueueName : queueDeclareValue.Name ?? MyStackConsts.DEFAULT_QUEUE_NAME)!;
+                exchangeName = (!string.IsNullOrEmpty(queueBindAttribute.ExchangeName) ? queueBindAttribute.ExchangeName : exchangeDeclareValue.Name ?? MyStackConsts.DEFAULT_EXCHANGE_NAME)!;
+                eventName = queueBindAttribute.RoutingKey;
             }
             else
             {
-                queueName = queueDeclareValue.Name ?? assemblyName;
-                exchangeName = exchangeDeclareValue.Name ?? assemblyName;
-                routingKey = eventType.FullName!;
+                queueName = queueDeclareValue.Name ?? MyStackConsts.DEFAULT_QUEUE_NAME;
+                exchangeName = exchangeDeclareValue.Name ?? MyStackConsts.DEFAULT_EXCHANGE_NAME;
+                eventName = messageType.FullName!;
             }
-
+            var routingKey = _routingKeyProvider.GetValue(eventName);
             return new QueueBindValue(queueName, exchangeName, routingKey);
         }
     }

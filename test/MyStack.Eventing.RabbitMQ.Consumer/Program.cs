@@ -28,6 +28,7 @@ namespace MyStack.Eventing.RabbitMQ.Consumer
                            configureMQ.QueueOptions.Name = "MyStack";
                            configureMQ.ExchangeOptions.Name = "MyStack";
                            configureMQ.ExchangeOptions.ExchangeType = "topic";
+                           configureMQ.RoutingKeyPrefix = "12345.";
                        });
                    },
                    Assembly.GetExecutingAssembly());

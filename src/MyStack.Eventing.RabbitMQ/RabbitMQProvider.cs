@@ -3,11 +3,14 @@ using RabbitMQ.Client;
 
 namespace MyStack.Eventing.RabbitMQ
 {
-    public class RabbitMQProvider(IOptions<RabbitMQOptions> options)
+    public class RabbitMQProvider
     {
         private readonly SemaphoreSlim _connectionLock = new(initialCount: 1, maxCount: 1);
-        private readonly RabbitMQOptions _options = options.Value;
-
+        private readonly RabbitMQOptions _options;
+        public RabbitMQProvider(IOptions<RabbitMQOptions> options)
+        {
+            _options = options.Value;
+        }
         public async Task<IConnection> GetConnectionAsync(CancellationToken cancellationToken)
         {
             IConnection connection;

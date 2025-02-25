@@ -1,17 +1,15 @@
 ﻿namespace MyStack.Eventing
 {
+    /// <summary>
+    /// Represents the base class for events 
+    /// </summary>
     public abstract class EventBase : IEvent
     {
-        public Guid Id { get; }
-        public DateTime CreationTime { get; }
-
-        public EventMeta Meta { get; }
+        public EventMetadata Metadata { get; }
 
         protected EventBase()
         {
-            Id = Guid.NewGuid();
-            CreationTime = DateTime.Now;
-            Meta = [];
+            Metadata = new EventMetadata();
         }
     }
 }

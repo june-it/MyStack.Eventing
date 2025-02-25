@@ -9,26 +9,38 @@ using RabbitMQ.Client.Events;
 
 namespace MyStack.Eventing.RabbitMQ
 {
-    public class RabbitMQBackgroundService(
-        IServiceProvider serviceProvider,
-        RabbitMQProvider rabbitMQProvider,
-        ExchangeDeclareValueProvider exchangeDeclareValueProvider,
-        QueueDeclareValueProvider queueDeclareValueProvider,
-        QueueBindValueProvider queueBindValueProvider,
-        IEventingBuilder eventingBuilder,
-        IOptions<RabbitMQOptions> options,
-        ILogger<RabbitMQBackgroundService> logger,
-        SubscriptionManager subscriptionManager) : BackgroundService
+    internal class RabbitMQBackgroundService : BackgroundService
     {
-        private readonly IServiceProvider _serviceProvider = serviceProvider;
-        private readonly RabbitMQProvider _rabbitMQProvider = rabbitMQProvider;
-        private readonly ExchangeDeclareValueProvider _exchangeDeclareValueProvider = exchangeDeclareValueProvider;
-        private readonly QueueDeclareValueProvider _queueDeclareValueProvider = queueDeclareValueProvider;
-        private readonly QueueBindValueProvider _queueBindValueProvider = queueBindValueProvider;
-        private readonly IEventingBuilder _eventingBuilder = eventingBuilder;
-        private readonly RabbitMQOptions _options = options.Value;
-        private readonly ILogger<RabbitMQBackgroundService> _logger = logger;
-        private readonly SubscriptionManager _subscriptionManager = subscriptionManager;
+        private readonly IServiceProvider _serviceProvider;
+        private readonly RabbitMQProvider _rabbitMQProvider;
+        private readonly ExchangeDeclareValueProvider _exchangeDeclareValueProvider;
+        private readonly QueueDeclareValueProvider _queueDeclareValueProvider;
+        private readonly QueueBindValueProvider _queueBindValueProvider;
+        private readonly IEventingBuilder _eventingBuilder;
+        private readonly RabbitMQOptions _options;
+        private readonly ILogger<RabbitMQBackgroundService> _logger;
+        private readonly SubscriptionManager _subscriptionManager;
+        public RabbitMQBackgroundService(IServiceProvider serviceProvider,
+            RabbitMQProvider rabbitMQProvider,
+            ExchangeDeclareValueProvider exchangeDeclareValueProvider,
+            QueueDeclareValueProvider queueDeclareValueProvider,
+            QueueBindValueProvider queueBindValueProvider,
+            IEventingBuilder eventingBuilder,
+            IOptions<RabbitMQOptions> options,
+            ILogger<RabbitMQBackgroundService> logger,
+            SubscriptionManager subscriptionManager)
+        {
+            _serviceProvider = serviceProvider;
+            _rabbitMQProvider = rabbitMQProvider;
+            _exchangeDeclareValueProvider = exchangeDeclareValueProvider;
+            _queueDeclareValueProvider = queueDeclareValueProvider;
+            _queueBindValueProvider = queueBindValueProvider;
+            _eventingBuilder = eventingBuilder;
+            _options = options.Value;
+            _logger = logger;
+            _subscriptionManager = subscriptionManager;
+        }
+
 
         protected override async Task ExecuteAsync(CancellationToken cancellationToken)
         {
@@ -40,28 +52,25 @@ namespace MyStack.Eventing.RabbitMQ
         private List<string> BindRoutingKeysAndGetQueues(IModel channel)
         {
             List<string> queueNames = new();
-            var eventTypes = _eventingBuilder.Assemblies.SelectMany(x =>
-              x.GetTypes()
-              .Where(x => !x.IsAbstract && x.GetInterfaces()
-              .Any(y => y.IsGenericType && y.GetGenericTypeDefinition() == typeof(IEventHandler<>)))
-              .SelectMany(x => x.GetInterfaces().Where(x => x.IsGenericType && x.GetGenericTypeDefinition() == typeof(IEventHandler<>)).SelectMany(x => x.GetGenericArguments())));
-            if (!eventTypes.Any())
-                return queueNames;
-            foreach (var eventType in eventTypes)
+            var subscriptions = _subscriptionManager.GetAllSubscriptions();
+            if (subscriptions == null || subscriptions.Count == 0) return queueNames;
+            foreach (var messageType in subscriptions)
             {
-                var exchangeDeclareValue = _exchangeDeclareValueProvider.GetValue(eventType, _options.ExchangeOptions);
-                var queueDeclareValue = _queueDeclareValueProvider.GetValue(eventType, _options.QueueOptions);
-                var queueBindValue = _queueBindValueProvider.GetValue(eventType);
+                var exchangeDeclareValue = _exchangeDeclareValueProvider.GetValue(messageType, _options.ExchangeOptions);
+                var queueDeclareValue = _queueDeclareValueProvider.GetValue(messageType, _options.QueueOptions);
+                var queueBindValue = _queueBindValueProvider.GetValue(messageType);
 
-                channel.QueueDeclare(queueBindValue.Queue, queueDeclareValue.Durable, queueDeclareValue.Exclusive, queueDeclareValue.AutoDelete, queueDeclareValue.Arguments);
-                channel.ExchangeDeclare(queueBindValue.Exchange, exchangeDeclareValue.ExchangeType ?? "topic", exchangeDeclareValue.Durable, exchangeDeclareValue.AutoDelete, exchangeDeclareValue.Arguments);
-                channel.QueueBind(queueBindValue.Queue, queueBindValue.Exchange, queueBindValue.RoutingKey, null);
-                queueNames.Add(queueBindValue.Queue);
-                _subscriptionManager.Subscribe(eventType, queueBindValue.RoutingKey);
+                channel.QueueDeclare(queueBindValue.QueueName, queueDeclareValue.Durable, queueDeclareValue.Exclusive, queueDeclareValue.AutoDelete, queueDeclareValue.Arguments);
+                channel.ExchangeDeclare(queueBindValue.ExchangeName, exchangeDeclareValue.ExchangeType ?? "topic", exchangeDeclareValue.Durable, exchangeDeclareValue.AutoDelete, exchangeDeclareValue.Arguments);
+                channel.QueueBind(queueBindValue.QueueName, queueBindValue.ExchangeName, queueBindValue.RoutingKey, null);
+                _logger?.LogInformation($"Binding routing key `{queueBindValue.RoutingKey}` to queue `{queueBindValue.QueueName}`");
+                queueNames.Add(queueBindValue.QueueName);
             }
+
             channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
             return queueNames;
         }
+
 
         private async Task ReceiveMessageAsync(IModel channel, List<string> queueNames, CancellationToken cancellationToken)
         {
@@ -70,56 +79,79 @@ namespace MyStack.Eventing.RabbitMQ
                 foreach (var queueName in queueNames.Distinct())
                 {
                     var consumer = new EventingBasicConsumer(channel);
+                    channel.BasicConsume(queueName, autoAck: false, consumer: consumer);
                     consumer.Received += async (ch, ea) =>
                     {
                         var receivedMessage = Encoding.UTF8.GetString(ea.Body.Span);
                         _logger?.LogInformation($"Received message: {receivedMessage}.");
+
                         if (string.IsNullOrEmpty(receivedMessage))
                             return;
                         var subscriptions = _subscriptionManager.GetSubscriptions(ea.RoutingKey);
                         if (subscriptions == null)
                             return;
-                        int successCount = 0;
-                        var tasks = new List<Task>();
-                        var semaphore = new SemaphoreSlim(10);
                         foreach (var subscription in subscriptions)
                         {
                             object? eventData = JsonConvert.DeserializeObject(receivedMessage, subscription);
                             if (eventData == null)
                                 return;
 
-                            var eventHandlers = _serviceProvider.GetServices(typeof(IEventHandler<>).MakeGenericType(subscription));
-                            var subTasks = eventHandlers.Select(async eventHandler =>
+                            if (subscription.GetInterfaces().Any(x => x == typeof(IEvent)))
                             {
-                                await semaphore.WaitAsync(cancellationToken);
-                                try
-                                {
-                                    await ((Task)((dynamic)eventHandler!).HandleAsync((dynamic)eventData, cancellationToken)).ConfigureAwait(false);
-                                    Interlocked.Increment(ref successCount);
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger?.LogError(ex, $"An exception occurred in the event handler '{eventHandler!.GetType().FullName}': {ex.Message}");
-                                }
-                                finally
-                                {
-                                    semaphore.Release();
-                                }
-                            });
-                            tasks.AddRange(subTasks);
+                                await DistributedEventHandleAsync(channel, ea, subscription, eventData, cancellationToken);
+                            }
                         }
-                        await Task.WhenAll(tasks);
-                        if (successCount > 0)
-                            channel.BasicAck(ea.DeliveryTag, false);
-                        else
-                            channel.BasicNack(ea.DeliveryTag, false, true);
                     };
-                    channel.BasicConsume(queueName, autoAck: false, consumer: consumer);
                     await Task.CompletedTask;
                 }
             }
         }
 
 
+        private async Task DistributedEventHandleAsync(IModel channel, BasicDeliverEventArgs e, Type messageType, object eventData, CancellationToken cancellationToken)
+        {
+            if (typeof(IEvent).IsAssignableFrom(messageType))
+            {
+                var eventHandlerType = typeof(IEventHandler<>).MakeGenericType(messageType);
+                var eventHandlers = _serviceProvider.GetServices(eventHandlerType);
+                if (eventHandlers != null)
+                {
+                    foreach (var eventHandler in eventHandlers)
+                    {
+                        try
+                        {
+                            await ((dynamic)eventHandler!).HandleAsync((dynamic)eventData, cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, ex.Message);
+                        }
+                    }
+                }
+            }
+            else if (messageType != null)
+            {
+                var eventWrapperType = typeof(EventWrapper<>).MakeGenericType(messageType);
+                var eventHandlerType = typeof(IEventHandler<>).MakeGenericType(eventWrapperType);
+                var eventHandlers = _serviceProvider.GetServices(eventHandlerType);
+                if (eventHandlers != null)
+                {
+                    var eventWrapper = Activator.CreateInstance(eventWrapperType, eventData);
+                    foreach (var eventHandler in eventHandlers)
+                    {
+                        try
+                        {
+                            await ((dynamic)eventHandler!).HandleAsync((dynamic)eventWrapper!, cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, ex.Message);
+                        }
+                    }
+                }
+            }
+
+            channel.BasicAck(e.DeliveryTag, false);
+        }
     }
 }

@@ -2,9 +2,9 @@
 {
     public static class EventMetaExtensions
     {
-        public static EventMeta AddKeyValue(this EventMeta meta, string name, string value)
+        public static EventMetadata AddRabbitMQHeaders(this EventMetadata meta, string name, string value)
         {
-            meta.TryAdd($"{RabbitMQConsts.RABBITMQ_HEADER}{name}", value);
+            meta.TryAdd($"{MyStackConsts.RABBITMQ_HEADER}{name}", value);
             return meta;
         }
     }

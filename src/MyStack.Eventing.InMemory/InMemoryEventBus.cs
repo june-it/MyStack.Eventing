@@ -14,9 +14,9 @@ namespace MyStack.Eventing.InMemory
             _logger = logger;
         }
 
-        public async Task PublishAsync(IEvent @event, CancellationToken cancellationToken = default)
+        public async Task PublishAsync(object eventData, EventMetadata? metadata = null, CancellationToken cancellationToken = default)
         {
-            var eventType = @event.GetType();
+            var eventType = eventData.GetType();
             var eventHandlers = _serviceProvider.GetServices(typeof(IEventHandler<>).MakeGenericType(eventType));
             if (eventHandlers.Any())
             {
@@ -24,7 +24,7 @@ namespace MyStack.Eventing.InMemory
                 {
                     try
                     {
-                        await ((dynamic)eventHandler!).HandleAsync((dynamic)@event, cancellationToken);
+                        await ((dynamic)eventHandler!).HandleAsync((dynamic)eventData, cancellationToken);
                     }
                     catch (Exception ex)
                     {
